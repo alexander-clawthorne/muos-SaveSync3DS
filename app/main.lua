@@ -2,8 +2,12 @@
 -- Push or pull DraStic saves to/from a 3DS running ftpd (TWiLight Menu++ layout).
 -- Transfers are done by sync3ds.py; this file is only the UI.
 
+-- Defaults. Every one of these can be overridden in config.ini next to this
+-- file; see README.md. The 3DS IP is also editable inside the app, which
+-- writes it back to config.ini, so a normal setup never needs the file edited
+-- by hand.
 local PORT = 5000
-local DEFAULT_IP = ""               -- set it in the app on first run
+local DEFAULT_IP = ""               -- empty = ask on first run
 local LOCAL_SAVE_DIR = "/mnt/mmc/MUOS/save/drastic/backup"
 local ROM_DIRS = {
     "/mnt/sdcard/ROMS/DS",
@@ -74,20 +78,61 @@ local function kb(bytes)
     return bytes .. " B"
 end
 
+-- config.ini is a flat key=value file shared with sync3ds.py. Comments and keys
+-- this front end does not know about (the Python side's port, user, pass, ...)
+-- are written back verbatim, so saving a new IP never discards settings.
+local configLines = {}
+
+local function splitList(value)
+    local out = {}
+    for part in value:gmatch("[^,]+") do
+        part = trim(part)
+        if part ~= "" then out[#out + 1] = part end
+    end
+    return out
+end
+
 local function loadConfig()
     local handle = io.open(configPath, "r")
     if not handle then return end
+    local values = {}
     for line in handle:lines() do
-        local value = line:match("^ip=(.+)$")
-        if value then ip = trim(value) end
+        configLines[#configLines + 1] = line
+        if not line:match("^%s*#") then
+            local key, value = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+            if key then values[key:lower()] = value end
+        end
     end
     handle:close()
+
+    if values.ip and values.ip ~= "" then ip = trim(values.ip) end
+    if values.port then PORT = tonumber(values.port) or PORT end
+    if values.python and values.python ~= "" then PYTHON = trim(values.python) end
+    if values.save_dir and values.save_dir ~= "" then
+        LOCAL_SAVE_DIR = (trim(values.save_dir):gsub("/+$", ""))
+    end
+    if values.rom_dirs and values.rom_dirs ~= "" then
+        local dirs = splitList(values.rom_dirs)
+        if #dirs > 0 then ROM_DIRS = dirs end
+    end
 end
 
 local function saveConfig()
     local handle = io.open(configPath, "w")
     if not handle then return false end
-    handle:write("ip=", ip, "\n")
+    local written = false
+    for index, line in ipairs(configLines) do
+        if not written and line:match("^%s*[iI][pP]%s*=") then
+            line = "ip=" .. ip
+            configLines[index] = line
+            written = true
+        end
+        handle:write(line, "\n")
+    end
+    if not written then
+        configLines[#configLines + 1] = "ip=" .. ip
+        handle:write("ip=", ip, "\n")
+    end
     handle:close()
     return true
 end
@@ -281,7 +326,12 @@ function love.load()
     fontBig = love.graphics.newFont(28)
     loadConfig()
     games = listGames()
-    if #games == 0 then
+    if ip == "" then
+        -- First run, or config.ini has no ip= line: go straight to the editor
+        -- rather than failing a connection to nothing.
+        openIpEditor()
+        setStatus("SET YOUR 3DS IP")
+    elseif #games == 0 then
         setStatus("NO DS SAVES OR ROMS FOUND")
     end
 end

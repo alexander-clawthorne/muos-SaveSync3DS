@@ -19,6 +19,9 @@ drastic-trngaje imports the .sav (seen with Custom Robo, 2026-09-29).
 
 Output is key=value lines for the LOVE front end. The last lines are always
 ok=1|0 and msg=<one line for the result screen>.
+
+Ports, credentials and paths come from config.ini next to this script, or from
+SYNC3DS_* environment variables - see the settings block below and README.md.
 """
 import ftplib
 import io
@@ -27,16 +30,74 @@ import re
 import sys
 import time
 
-PORT = 5000
-USER = "anonymous"      # ftpd's default: anonymous, no password
-PASSWORD = ""
-TIMEOUT = 10
-SLOTS = 10
+# ---------------------------------------------------------------- settings
+#
+# Everything below can be overridden, in this order (last one wins):
+#
+#   1. the defaults here
+#   2. config.ini next to this script  (key=value, one per line, # for comments)
+#   3. SYNC3DS_* environment variables
+#
+# So a stock muOS + ftpd setup needs no configuration at all, and anything
+# unusual is one line in config.ini. See README.md for the full key list.
 
-LOCAL_SAVE_DIR = "/mnt/mmc/MUOS/save/drastic/backup"
+DEFAULTS = {
+    # --- 3DS, over FTP -------------------------------------------------
+    "port": "5000",             # ftpd's port
+    "user": "anonymous",        # ftpd default is anonymous with no password
+    "pass": "",
+    "timeout": "10",
+    "remote_rom_root": "/roms/nds",   # where ftpd exposes your DS ROMs
+
+    # --- handheld, local paths ------------------------------------------
+    "save_dir": "/mnt/mmc/MUOS/save/drastic/backup",
+    "backups_kept": "10",
+}
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+
+
+def load_settings():
+    """DEFAULTS, overlaid with config.ini, overlaid with SYNC3DS_* env vars."""
+    values = dict(DEFAULTS)
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip().lower()
+                if key in values:
+                    values[key] = value.strip()
+    except OSError:
+        pass  # no config.ini is the normal case
+    for key in values:
+        env = os.environ.get("SYNC3DS_" + key.upper())
+        if env is not None:
+            values[key] = env
+    return values
+
+
+def _int(values, key):
+    try:
+        return int(values[key])
+    except (TypeError, ValueError):
+        return int(DEFAULTS[key])
+
+
+SETTINGS = load_settings()
+
+PORT = _int(SETTINGS, "port")
+USER = SETTINGS["user"]
+PASSWORD = SETTINGS["pass"]
+TIMEOUT = _int(SETTINGS, "timeout")
+SLOTS = 10                  # fixed by TWiLight Menu++: save numbers 0-9
+
+LOCAL_SAVE_DIR = SETTINGS["save_dir"].rstrip("/")
 BACKUP_DIR = LOCAL_SAVE_DIR + "/sync3ds_backups"
-BACKUPS_KEPT = 10
-REMOTE_ROM_ROOT = "/roms/nds"
+BACKUPS_KEPT = _int(SETTINGS, "backups_kept")
+REMOTE_ROM_ROOT = SETTINGS["remote_rom_root"].rstrip("/")
 GAMESETTINGS_DIR = "/_nds/TWiLightMenu/gamesettings"
 
 
