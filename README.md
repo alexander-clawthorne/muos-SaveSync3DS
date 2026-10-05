@@ -1,5 +1,12 @@
 # SaveSync3DS
 
+> **Superseded by [muos-SaveSyncNDS](https://github.com/alexander-clawthorne/muos-SaveSyncNDS).**
+> That version talks to a 3DS *and* a DSi, and can read the console's SD card
+> directly instead of going over the network, which is far faster. It began as a
+> verbatim import of this repository, so the history here is its first commit.
+> This repository is archived and will not be updated.
+
+
 A muOS application that moves Nintendo DS save files between a handheld running
 DraStic and a Nintendo 3DS running [ftpd](https://github.com/mtheall/ftpd),
 over your local network. No PC, no card swapping, no cables.
